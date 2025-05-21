@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Blacklisted Users</title>
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                max-width: 1000px;
+                margin: 0 auto;
+                padding: 20px;
+                background-color: #121212;
+                color: #ffffff;
+            }
+            h1 {
+                color: #ffffff;
+                text-align: center;
+            }
+            .search-container {
+                margin-bottom: 20px;
+            }
+            #searchInput {
+                width: 100%;
+                padding: 12px;
+                font-size: 16px;
+                border: 1px solid #333;
+                border-radius: 4px;
+                background-color: #1e1e1e;
+                color: #ffffff;
+            }
+            table {
+                width: 100%;
+                border-collapse: collapse;
+                background-color: #1e1e1e;
+                box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+            }
+            th,
+            td {
+                padding: 12px 15px;
+                text-align: left;
+                border-bottom: 1px solid #333;
+            }
+            th {
+                background-color: #2a2a2a;
+                font-weight: bold;
+                cursor: pointer;
+                color: #ffffff;
+            }
+            tr:hover {
+                background-color: #252525;
+            }
+
+            .badge {
+                padding: 4px 10px;
+                border-radius: 6px;
+                color: #fff;
+                display: inline-block;
+                font-size: 0.85em;
+                font-weight: bold;
+            }
+
+            .reason-G {
+                background-color: #cc5c5c;
+                border: 1px solid #993333;
+            }
+
+            .reason-E {
+                background-color: #e6c84c;
+                border: 1px solid #bfa235;
+                color: #fff;
+            }
+
+            .reason-S {
+                background-color: #66aa66;
+                border: 1px solid #447744;
+            }
+
+            .reason-L {
+                background-color: #6666cc;
+                border: 1px solid #444499;
+            }
+
+            .reason-AB {
+                background-color: #bb66bb;
+                border: 1px solid #884488;
+            }
+
+            .highlight {
+                background-color: orange;
+                color: black;
+                padding: 0 2px;
+                border-radius: 2px;
+            }
+
+            .loading,
+            .no-results {
+                text-align: center;
+                padding: 20px;
+                color: #aaa;
+            }
+
+            .stats {
+                margin-top: 10px;
+                text-align: right;
+                font-size: 14px;
+                color: #aaa;
+            }
+        </style>
+    </head>
+    <body>
+        <h1>Blacklisted Users</h1>
+
+        <div class="search-container">
+            <input type="text" id="searchInput" placeholder="Search for ID, username, display name, or reason..." />
+        </div>
+
+        <div class="stats"><span id="totalUsers">0</span> total users | <span id="filteredUsers">0</span> shown</div>
+
+        <div id="usersTable">
+            <div class="loading">Loading user data...</div>
+        </div>
+
+        <script>
+            const allUsers = [];
+
+            function getReasonInfo(code) {
+                const map = {
+                    G: { text: "Griefer", class: "reason-G" },
+                    E: { text: "Exploiter", class: "reason-E" },
+                    S: { text: "Scammer", class: "reason-S" },
+                    R: { text: "Raider", class: "reason-R" },
+                    AB: { text: "Admin Abuse", class: "reason-AB" },
+                };
+                return map[code] || { text: code, class: "" };
+            }
+
+            function highlightMatch(text, searchTerm) {
+                if (!searchTerm) return text;
+                const regex = new RegExp(`(${searchTerm})`, "gi");
+                return text.replace(regex, '<span class="highlight">$1</span>');
+            }
+
+            function displayUsers(users, searchTerm = "") {
+                const tableContainer = document.getElementById("usersTable");
+
+                if (users.length === 0) {
+                    tableContainer.innerHTML = '<div class="no-results">No users match your search.</div>';
+                    return;
+                }
+
+                let html = `
+      <table>
+        <thead>
+          <tr>
+            <th onclick="sortTable(0)">ID</th>
+            <th onclick="sortTable(1)">Username</th>
+            <th onclick="sortTable(2)">Display Name</th>
+            <th onclick="sortTable(3)">Reason</th>
+          </tr>
+        </thead>
+        <tbody>
+    `;
+
+                users.forEach((user) => {
+                    const id = highlightMatch(user.ID.toString(), searchTerm);
+                    const username = highlightMatch(user.UN, searchTerm);
+                    const displayName = highlightMatch(user.DN, searchTerm);
+
+                    const reasonCodes = user.R.split(",").map((r) => r.trim());
+                    const reasonsHTML = reasonCodes
+                        .map((code) => {
+                            const info = getReasonInfo(code);
+                            const text = highlightMatch(info.text, searchTerm);
+                            return `<span class="badge ${info.class}">${text}</span>`;
+                        })
+                        .join(" ");
+
+                    html += `
+        <tr>
+          <td>${id}</td>
+          <td>${username}</td>
+          <td>${displayName}</td>
+          <td>${reasonsHTML}</td>
+        </tr>
+      `;
+                });
+
+                html += "</tbody></table>";
+                tableContainer.innerHTML = html;
+            }
+
+            function filterUsers() {
+                const searchTerm = document.getElementById("searchInput").value.trim().toLowerCase();
+
+                if (searchTerm === "") {
+                    displayUsers(allUsers);
+                    updateStats(allUsers, allUsers);
+                    return;
+                }
+
+                const filtered = allUsers.filter((user) => {
+                    const reasonTexts = user.R.split(",").map((r) => getReasonInfo(r.trim()).text.toLowerCase());
+                    const matchesReason = reasonTexts.some((text) => text.includes(searchTerm));
+
+                    return user.ID.toString().includes(searchTerm) || user.UN.toLowerCase().includes(searchTerm) || user.DN.toLowerCase().includes(searchTerm) || matchesReason;
+                });
+
+                displayUsers(filtered, searchTerm);
+                updateStats(allUsers, filtered);
+            }
+
+            function updateStats(all, filtered) {
+                document.getElementById("totalUsers").textContent = all.length;
+                document.getElementById("filteredUsers").textContent = filtered.length;
+            }
+
+            let sortColumn = 0;
+            let sortDirection = 1;
+
+            function sortTable(column) {
+                if (sortColumn === column) {
+                    sortDirection *= -1;
+                } else {
+                    sortColumn = column;
+                    sortDirection = 1;
+                }
+
+                const sorted = [...allUsers].sort((a, b) => {
+                    const val = (i) => {
+                        switch (column) {
+                            case 0:
+                                return parseInt(i.ID);
+                            case 1:
+                                return i.UN.toLowerCase();
+                            case 2:
+                                return i.DN.toLowerCase();
+                            case 3:
+                                const reasons = i.R.split(",").map((r) => getReasonInfo(r.trim()).text.toLowerCase());
+                                return reasons[0] || "";
+                        }
+                    };
+                    const aVal = val(a),
+                        bVal = val(b);
+                    return (aVal < bVal ? -1 : aVal > bVal ? 1 : 0) * sortDirection;
+                });
+
+                const searchTerm = document.getElementById("searchInput").value.trim().toLowerCase();
+                const filtered = searchTerm
+                    ? sorted.filter((user) => {
+                          const reasonTexts = user.R.split(",").map((r) => getReasonInfo(r.trim()).text.toLowerCase());
+                          const matchesReason = reasonTexts.some((text) => text.includes(searchTerm));
+
+                          return user.ID.toString().includes(searchTerm) || user.UN.toLowerCase().includes(searchTerm) || user.DN.toLowerCase().includes(searchTerm) || matchesReason;
+                      })
+                    : sorted;
+
+                displayUsers(filtered, searchTerm);
+                updateStats(allUsers, filtered);
+            }
+
+            document.getElementById("searchInput").addEventListener("input", filterUsers);
+            displayUsers(allUsers);
+            updateStats(allUsers, allUsers);
+        </script>
+    </body>
+</html>
