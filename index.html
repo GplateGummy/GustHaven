@@ -123,13 +123,30 @@
         <div id="usersTable">
             <div class="loading">Loading user data...</div>
         </div>
-
         <script>
             let sortColumn = 3;
             let sortDirection = 1;
             let lastSortBeforeSearch = { column: 3, direction: 1 };
             let hasStoredSort = false;
             let allUsers = [];
+
+            function getReasonInfo(code) {
+                const map = {
+                    G: { text: "Griefer", class: "reason-G" },
+                    E: { text: "Exploiter", class: "reason-E" },
+                    A: { text: "Alt", class: "reason-A" },
+                    R: { text: "Raider", class: "reason-R" },
+                    AB: { text: "Admin Abuse", class: "reason-AB" },
+                    L: { text: "Leaker", class: "reason-L" },
+                };
+                return map[code] || { text: code, class: "" };
+            }
+
+            function highlightMatch(text, searchTerm) {
+                if (!searchTerm) return text;
+                const regex = new RegExp(`(${searchTerm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "gi");
+                return text.replace(regex, '<span class="highlight">$1</span>');
+            }
 
             function sortTable(column) {
                 const searchTerm = document.getElementById("searchInput").value.trim();
@@ -142,10 +159,166 @@
                     sortDirection = 1;
                 }
 
-                lastSortBeforeSearch = { column: sortColumn, direction: sortDirection };
+                lastSortBeforeSearch = { column, direction: sortDirection };
                 const sorted = sortUsersByCurrentCriteria(allUsers);
                 displayUsers(sorted);
                 updateStats(allUsers, sorted);
+            }
+
+            function sortUsersByCurrentCriteria(users) {
+                return [...users].sort((a, b) => {
+                    const val = (i) => {
+                        switch (sortColumn) {
+                            case 0:
+                                return parseInt(i.ID);
+                            case 1:
+                                return i.UN.toLowerCase();
+                            case 2:
+                                return i.DN.toLowerCase();
+                            case 3:
+                                const reasons = i.R.split(",").map((r) => r.trim());
+                                const minPriority = Math.min(...reasons.map((r) => getReasonPriority(r)));
+                                return minPriority;
+                            default:
+                                return "";
+                        }
+                    };
+                    const aVal = val(a);
+                    const bVal = val(b);
+                    return (aVal < bVal ? -1 : aVal > bVal ? 1 : 0) * sortDirection;
+                });
+            }
+
+            function getReasonPriority(reasonCode) {
+                const priorities = {
+                    G: 1,
+                    E: 2,
+                    A: 3,
+                    R: 4,
+                    AB: 5,
+                };
+                return priorities[reasonCode] || 999;
+            }
+
+            function displayUsers(users, searchTerm = "") {
+                const tableContainer = document.getElementById("usersTable");
+
+                if (users.length === 0) {
+                    tableContainer.innerHTML = '<div class="no-results">No users found.</div>';
+                    return;
+                }
+
+                let html = `
+      <table>
+        <thead>
+          <tr>
+            <th data-col="0">User ID <span class="sort-indicator" id="sort-0"></span></th>
+            <th data-col="1">Username <span class="sort-indicator" id="sort-1"></span></th>
+            <th data-col="2">Display Name <span class="sort-indicator" id="sort-2"></span></th>
+            <th data-col="3">Reason <span class="sort-indicator" id="sort-3"></span></th>
+          </tr>
+        </thead>
+        <tbody>
+    `;
+
+                users.forEach((user) => {
+                    const id = highlightMatch(user.ID.toString(), searchTerm);
+                    const username = highlightMatch(user.UN, searchTerm);
+                    const displayName = highlightMatch(user.DN, searchTerm);
+                    const reasonCodes = user.R.split(",").map((r) => r.trim());
+                    const reasonsHTML = reasonCodes
+                        .map((code) => {
+                            const info = getReasonInfo(code);
+                            const text = highlightMatch(info.text, searchTerm);
+                            return `<span class="badge ${info.class}">${text}</span>`;
+                        })
+                        .join(" ");
+                    html += `
+        <tr>
+          <td>${id}</td>
+          <td>${username}</td>
+          <td>${displayName}</td>
+          <td>${reasonsHTML}</td>
+        </tr>
+      `;
+                });
+
+                html += "</tbody></table>";
+                tableContainer.innerHTML = html;
+
+                attachSortHandlers();
+                updateSortIndicators();
+            }
+
+            function attachSortHandlers() {
+                document.querySelectorAll("th[data-col]").forEach((th) => {
+                    th.onclick = () => {
+                        const col = parseInt(th.getAttribute("data-col"));
+                        sortTable(col);
+                    };
+                });
+            }
+
+            function updateSortIndicators() {
+                for (let i = 0; i < 4; i++) {
+                    const indicator = document.getElementById(`sort-${i}`);
+                    if (indicator) indicator.textContent = "";
+                }
+                const current = document.getElementById(`sort-${sortColumn}`);
+                if (current) current.textContent = sortDirection === 1 ? "↑" : "↓";
+            }
+
+            function filterUsers() {
+                const searchTerm = document.getElementById("searchInput").value.trim().toLowerCase();
+                if (searchTerm === "") {
+                    sortColumn = lastSortBeforeSearch.column;
+                    sortDirection = lastSortBeforeSearch.direction;
+                    const sorted = sortUsersByCurrentCriteria(allUsers);
+                    displayUsers(sorted);
+                    updateStats(allUsers, sorted);
+                    hasStoredSort = false;
+                    return;
+                }
+
+                if (!hasStoredSort) {
+                    lastSortBeforeSearch = { column: sortColumn, direction: sortDirection };
+                    hasStoredSort = true;
+                }
+
+                const filtered = allUsers.filter((user) => {
+                    const reasonTexts = user.R.split(",").map((r) => getReasonInfo(r.trim()).text.toLowerCase());
+                    const matchesReason = reasonTexts.some((text) => text.includes(searchTerm));
+                    return user.ID.toString().includes(searchTerm) || user.UN.toLowerCase().includes(searchTerm) || user.DN.toLowerCase().includes(searchTerm) || matchesReason;
+                });
+
+                const sortedByRelevance = filtered.sort((a, b) => {
+                    const aMatches =
+                        countMatches(a.ID.toString(), searchTerm) +
+                        countMatches(a.UN.toLowerCase(), searchTerm) +
+                        countMatches(a.DN.toLowerCase(), searchTerm) +
+                        a.R.split(",").reduce((sum, r) => sum + countMatches(getReasonInfo(r.trim()).text.toLowerCase(), searchTerm), 0);
+                    const bMatches =
+                        countMatches(b.ID.toString(), searchTerm) +
+                        countMatches(b.UN.toLowerCase(), searchTerm) +
+                        countMatches(b.DN.toLowerCase(), searchTerm) +
+                        b.R.split(",").reduce((sum, r) => sum + countMatches(getReasonInfo(r.trim()).text.toLowerCase(), searchTerm), 0);
+                    return bMatches - aMatches;
+                });
+
+                displayUsers(sortedByRelevance, searchTerm);
+                updateStats(allUsers, sortedByRelevance);
+            }
+
+            function countMatches(text, searchTerm) {
+                if (!searchTerm) return 0;
+                const regex = new RegExp(searchTerm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+                const matches = text.match(regex);
+                return matches ? matches.length : 0;
+            }
+
+            function updateStats(all, filtered) {
+                document.getElementById("totalUsers").textContent = all.length;
+                document.getElementById("filteredUsers").textContent = filtered.length;
             }
 
             document.addEventListener("DOMContentLoaded", () => {
@@ -153,173 +326,10 @@
                     { ID: "4555316265", UN: "ValueToTheStars", DN: "Value", R: "R" },
                     { ID: "1944512650", UN: "Zaneioio", DN: "zaneioio", R: "G" },
                 ];
-
-                function getReasonInfo(code) {
-                    const map = {
-                        G: { text: "Griefer", class: "reason-G" },
-                        E: { text: "Exploiter", class: "reason-E" },
-                        A: { text: "Alt", class: "reason-A" },
-                        R: { text: "Raider", class: "reason-R" },
-                        AB: { text: "Admin Abuse", class: "reason-AB" },
-                    };
-                    return map[code] || { text: code, class: "" };
-                }
-
-                function highlightMatch(text, searchTerm) {
-                    if (!searchTerm) return text;
-                    const regex = new RegExp(`(${searchTerm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "gi");
-                    return text.replace(regex, '<span class="highlight">$1</span>');
-                }
-
-                function displayUsers(users, searchTerm = "") {
-                    const tableContainer = document.getElementById("usersTable");
-                    if (users.length === 0) {
-                        tableContainer.innerHTML = '<div class="no-results">No users found.</div>';
-                        return;
-                    }
-
-                    let html = `
-                <table>
-                <thead>
-                <tr>
-                    <th onclick="sortTable(0)">User ID <span class="sort-indicator" id="sort-0"></span></th>
-                    <th onclick="sortTable(1)">Username <span class="sort-indicator" id="sort-1"></span></th>
-                    <th onclick="sortTable(2)">Display Name <span class="sort-indicator" id="sort-2"></span></th>
-                    <th onclick="sortTable(3)">Reason <span class="sort-indicator" id="sort-3"></span></th>
-                </tr>
-                </thead>
-                <tbody>
-            `;
-                    users.forEach((user) => {
-                        const id = highlightMatch(user.ID.toString(), searchTerm);
-                        const username = highlightMatch(user.UN, searchTerm);
-                        const displayName = highlightMatch(user.DN, searchTerm);
-                        const reasonCodes = user.R.split(",").map((r) => r.trim());
-                        const reasonsHTML = reasonCodes
-                            .map((code) => {
-                                const info = getReasonInfo(code);
-                                const text = highlightMatch(info.text, searchTerm);
-                                return `<span class="badge ${info.class}">${text}</span>`;
-                            })
-                            .join(" ");
-                        html += `
-                    <tr>
-                        <td>${id}</td>
-                        <td>${username}</td>
-                        <td>${displayName}</td>
-                        <td>${reasonsHTML}</td>
-                    </tr>
-                `;
-                    });
-                    html += "</tbody></table>";
-                    tableContainer.innerHTML = html;
-                    updateSortIndicators();
-                }
-
-                function filterUsers() {
-                    const searchTerm = document.getElementById("searchInput").value.trim().toLowerCase();
-                    if (searchTerm === "") {
-                        sortColumn = lastSortBeforeSearch.column;
-                        sortDirection = lastSortBeforeSearch.direction;
-                        const sorted = sortUsersByCurrentCriteria(allUsers);
-                        displayUsers(sorted);
-                        updateStats(allUsers, sorted);
-                        hasStoredSort = false;
-                        return;
-                    }
-
-                    if (!hasStoredSort) {
-                        lastSortBeforeSearch = { column: sortColumn, direction: sortDirection };
-                        hasStoredSort = true;
-                    }
-
-                    const filtered = allUsers.filter((user) => {
-                        const reasonTexts = user.R.split(",").map((r) => getReasonInfo(r.trim()).text.toLowerCase());
-                        const matchesReason = reasonTexts.some((text) => text.includes(searchTerm));
-                        return user.ID.toString().includes(searchTerm) || user.UN.toLowerCase().includes(searchTerm) || user.DN.toLowerCase().includes(searchTerm) || matchesReason;
-                    });
-
-                    const sortedByRelevance = filtered.sort((a, b) => {
-                        const aMatches =
-                            countMatches(a.ID.toString(), searchTerm) +
-                            countMatches(a.UN.toLowerCase(), searchTerm) +
-                            countMatches(a.DN.toLowerCase(), searchTerm) +
-                            a.R.split(",").reduce((sum, r) => sum + countMatches(getReasonInfo(r.trim()).text.toLowerCase(), searchTerm), 0);
-                        const bMatches =
-                            countMatches(b.ID.toString(), searchTerm) +
-                            countMatches(b.UN.toLowerCase(), searchTerm) +
-                            countMatches(b.DN.toLowerCase(), searchTerm) +
-                            b.R.split(",").reduce((sum, r) => sum + countMatches(getReasonInfo(r.trim()).text.toLowerCase(), searchTerm), 0);
-                        return bMatches - aMatches;
-                    });
-
-                    displayUsers(sortedByRelevance, searchTerm);
-                    updateStats(allUsers, sortedByRelevance);
-                }
-
-                function countMatches(text, searchTerm) {
-                    if (!searchTerm) return 0;
-                    const regex = new RegExp(searchTerm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
-                    const matches = text.match(regex);
-                    return matches ? matches.length : 0;
-                }
-
-                function updateStats(all, filtered) {
-                    document.getElementById("totalUsers").textContent = all.length;
-                    document.getElementById("filteredUsers").textContent = filtered.length;
-                }
-
-                function updateSortIndicators() {
-                    for (let i = 0; i < 4; i++) {
-                        const indicator = document.getElementById(`sort-${i}`);
-                        if (indicator) indicator.textContent = "";
-                    }
-                    const currentIndicator = document.getElementById(`sort-${sortColumn}`);
-                    if (currentIndicator) {
-                        currentIndicator.textContent = sortDirection === 1 ? "↑" : "↓";
-                    }
-                }
-
-                function getReasonPriority(reasonCode) {
-                    const priorities = {
-                        G: 1,
-                        E: 2,
-                        A: 3,
-                        R: 4,
-                        AB: 5,
-                    };
-                    return priorities[reasonCode] || 999;
-                }
-
-                function sortUsersByCurrentCriteria(users) {
-                    return [...users].sort((a, b) => {
-                        const val = (i) => {
-                            switch (sortColumn) {
-                                case 0:
-                                    return parseInt(i.ID);
-                                case 1:
-                                    return i.UN.toLowerCase();
-                                case 2:
-                                    return i.DN.toLowerCase();
-                                case 3:
-                                    const reasons = i.R.split(",").map((r) => r.trim());
-                                    const minPriority = Math.min(...reasons.map((r) => getReasonPriority(r)));
-                                    return minPriority;
-                                default:
-                                    return "";
-                            }
-                        };
-                        const aVal = val(a);
-                        const bVal = val(b);
-                        return (aVal < bVal ? -1 : aVal > bVal ? 1 : 0) * sortDirection;
-                    });
-                }
-
+                const sorted = sortUsersByCurrentCriteria(allUsers);
+                displayUsers(sorted);
+                updateStats(allUsers, sorted);
                 document.getElementById("searchInput").addEventListener("input", filterUsers);
-
-                const initialSorted = sortUsersByCurrentCriteria(allUsers);
-                displayUsers(initialSorted);
-                updateStats(allUsers, initialSorted);
             });
         </script>
     </body>
