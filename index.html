@@ -137,7 +137,6 @@
                     A: { text: "Alt", class: "reason-A" },
                     R: { text: "Raider", class: "reason-R" },
                     AB: { text: "Admin Abuse", class: "reason-AB" },
-                    L: { text: "Leaker", class: "reason-L" },
                 };
                 return map[code] || { text: code, class: "" };
             }
@@ -247,7 +246,7 @@
                 tableContainer.innerHTML = html;
 
                 attachSortHandlers();
-                updateSortIndicators();
+                updateSortIndicators(searchTerm === "");
             }
 
             function attachSortHandlers() {
@@ -259,13 +258,15 @@
                 });
             }
 
-            function updateSortIndicators() {
+            function updateSortIndicators(showIndicators = true) {
                 for (let i = 0; i < 4; i++) {
                     const indicator = document.getElementById(`sort-${i}`);
                     if (indicator) indicator.textContent = "";
                 }
-                const current = document.getElementById(`sort-${sortColumn}`);
-                if (current) current.textContent = sortDirection === 1 ? "↑" : "↓";
+                if (showIndicators) {
+                    const current = document.getElementById(`sort-${sortColumn}`);
+                    if (current) current.textContent = sortDirection === 1 ? "↑" : "↓";
+                }
             }
 
             function filterUsers() {
