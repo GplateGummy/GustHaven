@@ -29,6 +29,10 @@
                 border-radius: 4px;
                 background-color: #1e1e1e;
                 color: #ffffff;
+                box-sizing: border-box;
+            }
+            #searchInput::placeholder {
+                color: #888;
             }
             table {
                 width: 100%;
@@ -47,11 +51,14 @@
                 font-weight: bold;
                 cursor: pointer;
                 color: #ffffff;
+                user-select: none;
+            }
+            th:hover {
+                background-color: #333;
             }
             tr:hover {
                 background-color: #252525;
             }
-
             .badge {
                 padding: 4px 10px;
                 border-radius: 6px;
@@ -59,118 +66,106 @@
                 display: inline-block;
                 font-size: 0.85em;
                 font-weight: bold;
+                margin-right: 4px;
+                margin-bottom: 2px;
             }
-
             .reason-G {
                 background-color: #cc5c5c;
                 border: 1px solid #993333;
             }
-
             .reason-E {
                 background-color: #e6c84c;
                 border: 1px solid #bfa235;
-                color: #fff;
+                color: #000;
             }
-
             .reason-A {
                 background-color: #66aa66;
                 border: 1px solid #447744;
             }
-
-            .reason-L {
+            .reason-R {
                 background-color: #6666cc;
                 border: 1px solid #444499;
             }
-
             .reason-AB {
                 background-color: #bb66bb;
                 border: 1px solid #884488;
             }
-
             .highlight {
                 background-color: orange;
-                color: black;
-                padding: 0 2px;
+                color: white;
                 border-radius: 2px;
             }
-
             .loading,
             .no-results {
                 text-align: center;
                 padding: 20px;
                 color: #aaa;
             }
-
             .stats {
                 margin-top: 10px;
                 text-align: right;
                 font-size: 14px;
                 color: #aaa;
             }
+            .sort-indicator {
+                font-size: 12px;
+                margin-left: 5px;
+                opacity: 0.7;
+            }
         </style>
     </head>
     <body>
         <h1>Blacklisted Users</h1>
-
         <div class="search-container">
             <input type="text" id="searchInput" placeholder="Search for ID, username, display name, or reason..." />
         </div>
-
         <div class="stats"><span id="totalUsers">0</span> total users | <span id="filteredUsers">0</span> shown</div>
-
         <div id="usersTable">
             <div class="loading">Loading user data...</div>
         </div>
-
         <script>
             const allUsers = [
-{ID:"4555316265",UN:"ValueToTheStars",DN:"Value",R:"R"},
-{ID:"1944512650",UN:"Zaneioio",DN:"zaneioio",R:"G"}
-];
-
+                { ID: "4555316265", UN: "ValueToTheStars", DN: "Value", R: "R" },
+                { ID: "1944512650", UN: "Zaneioio", DN: "zaneioio", R: "G" },
+            ];
             function getReasonInfo(code) {
                 const map = {
                     G: { text: "Griefer", class: "reason-G" },
                     E: { text: "Exploiter", class: "reason-E" },
-                    S: { text: "Alt", class: "reason-A" },
+                    A: { text: "Alt", class: "reason-A" },
                     R: { text: "Raider", class: "reason-R" },
                     AB: { text: "Admin Abuse", class: "reason-AB" },
+                    L: { text: "Leaker", class: "reason-L" },
                 };
                 return map[code] || { text: code, class: "" };
             }
-
             function highlightMatch(text, searchTerm) {
                 if (!searchTerm) return text;
-                const regex = new RegExp(`(${searchTerm})`, "gi");
+                const regex = new RegExp(`(${searchTerm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "gi");
                 return text.replace(regex, '<span class="highlight">$1</span>');
             }
-
             function displayUsers(users, searchTerm = "") {
                 const tableContainer = document.getElementById("usersTable");
-
                 if (users.length === 0) {
                     tableContainer.innerHTML = '<div class="no-results">No users found.</div>';
                     return;
                 }
-
                 let html = `
-      <table>
-        <thead>
-          <tr>
-            <th onclick="sortTable(0)">ID</th>
-            <th onclick="sortTable(1)">Username</th>
-            <th onclick="sortTable(2)">Display Name</th>
-            <th onclick="sortTable(3)">Reason</th>
-          </tr>
-        </thead>
-        <tbody>
-    `;
-
+         <table>
+         <thead>
+         <tr>
+         <th onclick="sortTable(0)">User ID <span class="sort-indicator" id="sort-0"></span></th>
+         <th onclick="sortTable(1)">Username <span class="sort-indicator" id="sort-1"></span></th>
+         <th onclick="sortTable(2)">Display Name <span class="sort-indicator" id="sort-2"></span></th>
+         <th onclick="sortTable(3)">Reason <span class="sort-indicator" id="sort-3"></span></th>
+         </tr>
+         </thead>
+         <tbody>
+         `;
                 users.forEach((user) => {
                     const id = highlightMatch(user.ID.toString(), searchTerm);
                     const username = highlightMatch(user.UN, searchTerm);
                     const displayName = highlightMatch(user.DN, searchTerm);
-
                     const reasonCodes = user.R.split(",").map((r) => r.trim());
                     const reasonsHTML = reasonCodes
                         .map((code) => {
@@ -179,60 +174,108 @@
                             return `<span class="badge ${info.class}">${text}</span>`;
                         })
                         .join(" ");
-
                     html += `
-        <tr>
-          <td>${id}</td>
-          <td>${username}</td>
-          <td>${displayName}</td>
-          <td>${reasonsHTML}</td>
-        </tr>
-      `;
+         <tr>
+         <td>${id}</td>
+         <td>${username}</td>
+         <td>${displayName}</td>
+         <td>${reasonsHTML}</td>
+         </tr>
+         `;
                 });
-
                 html += "</tbody></table>";
                 tableContainer.innerHTML = html;
+                updateSortIndicators();
             }
-
+            let hasStoredSort = false;
             function filterUsers() {
                 const searchTerm = document.getElementById("searchInput").value.trim().toLowerCase();
-
                 if (searchTerm === "") {
-                    displayUsers(allUsers);
-                    updateStats(allUsers, allUsers);
+                    sortColumn = lastSortBeforeSearch.column;
+                    sortDirection = lastSortBeforeSearch.direction;
+                    const sorted = sortUsersByCurrentCriteria(allUsers);
+                    displayUsers(sorted);
+                    updateStats(allUsers, sorted);
+                    hasStoredSort = false;
                     return;
                 }
-
+                if (!hasStoredSort) {
+                    lastSortBeforeSearch = { column: sortColumn, direction: sortDirection };
+                    hasStoredSort = true;
+                }
                 const filtered = allUsers.filter((user) => {
                     const reasonTexts = user.R.split(",").map((r) => getReasonInfo(r.trim()).text.toLowerCase());
                     const matchesReason = reasonTexts.some((text) => text.includes(searchTerm));
-
                     return user.ID.toString().includes(searchTerm) || user.UN.toLowerCase().includes(searchTerm) || user.DN.toLowerCase().includes(searchTerm) || matchesReason;
                 });
-
-                displayUsers(filtered, searchTerm);
-                updateStats(allUsers, filtered);
+                const sortedByRelevance = filtered.sort((a, b) => {
+                    const aMatches =
+                        countMatches(a.ID.toString(), searchTerm) +
+                        countMatches(a.UN.toLowerCase(), searchTerm) +
+                        countMatches(a.DN.toLowerCase(), searchTerm) +
+                        a.R.split(",").reduce((sum, r) => sum + countMatches(getReasonInfo(r.trim()).text.toLowerCase(), searchTerm), 0);
+                    const bMatches =
+                        countMatches(b.ID.toString(), searchTerm) +
+                        countMatches(b.UN.toLowerCase(), searchTerm) +
+                        countMatches(b.DN.toLowerCase(), searchTerm) +
+                        b.R.split(",").reduce((sum, r) => sum + countMatches(getReasonInfo(r.trim()).text.toLowerCase(), searchTerm), 0);
+                    return bMatches - aMatches;
+                });
+                displayUsers(sortedByRelevance, searchTerm);
+                updateStats(allUsers, sortedByRelevance);
             }
-
             function updateStats(all, filtered) {
                 document.getElementById("totalUsers").textContent = all.length;
                 document.getElementById("filteredUsers").textContent = filtered.length;
             }
-
-            let sortColumn = 0;
+            const sortedByRelevance = filtered.sort((a, b) => {
+                const aMatches =
+                    countMatches(a.ID.toString(), searchTerm) +
+                    countMatches(a.UN.toLowerCase(), searchTerm) +
+                    countMatches(a.DN.toLowerCase(), searchTerm) +
+                    a.R.split(",").reduce((sum, r) => sum + countMatches(getReasonInfo(r.trim()).text.toLowerCase(), searchTerm), 0);
+                const bMatches =
+                    countMatches(b.ID.toString(), searchTerm) +
+                    countMatches(b.UN.toLowerCase(), searchTerm) +
+                    countMatches(b.DN.toLowerCase(), searchTerm) +
+                    b.R.split(",").reduce((sum, r) => sum + countMatches(getReasonInfo(r.trim()).text.toLowerCase(), searchTerm), 0);
+                return bMatches - aMatches;
+            });
+            let sortColumn = 3;
             let sortDirection = 1;
-
-            function sortTable(column) {
-                if (sortColumn === column) {
-                    sortDirection *= -1;
-                } else {
-                    sortColumn = column;
-                    sortDirection = 1;
+            let lastSortBeforeSearch = { column: 3, direction: 1 };
+            function getReasonPriority(reasonCode) {
+                const priorities = {
+                    G: 1,
+                    E: 2,
+                    A: 3,
+                    R: 4,
+                    AB: 5,
+                };
+                return priorities[reasonCode] || 999;
+            }
+            function countMatches(text, searchTerm) {
+                if (!searchTerm) return 0;
+                const regex = new RegExp(searchTerm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+                const matches = text.match(regex);
+                return matches ? matches.length : 0;
+            }
+            function updateSortIndicators() {
+                for (let i = 0; i < 4; i++) {
+                    const indicator = document.getElementById(`sort-${i}`);
+                    if (indicator) {
+                        indicator.textContent = "";
+                    }
                 }
-
-                const sorted = [...allUsers].sort((a, b) => {
+                const currentIndicator = document.getElementById(`sort-${sortColumn}`);
+                if (currentIndicator) {
+                    currentIndicator.textContent = sortDirection === 1 ? "↑" : "↓";
+                }
+            }
+            function sortUsersByCurrentCriteria(users) {
+                return [...users].sort((a, b) => {
                     const val = (i) => {
-                        switch (column) {
+                        switch (sortColumn) {
                             case 0:
                                 return parseInt(i.ID);
                             case 1:
@@ -240,32 +283,38 @@
                             case 2:
                                 return i.DN.toLowerCase();
                             case 3:
-                                const reasons = i.R.split(",").map((r) => getReasonInfo(r.trim()).text.toLowerCase());
-                                return reasons[0] || "";
+                                const reasons = i.R.split(",").map((r) => r.trim());
+                                const minPriority = Math.min(...reasons.map((r) => getReasonPriority(r)));
+                                return minPriority;
+                            default:
+                                return "";
                         }
                     };
-                    const aVal = val(a),
-                        bVal = val(b);
+                    const aVal = val(a);
+                    const bVal = val(b);
                     return (aVal < bVal ? -1 : aVal > bVal ? 1 : 0) * sortDirection;
                 });
-
-                const searchTerm = document.getElementById("searchInput").value.trim().toLowerCase();
-                const filtered = searchTerm
-                    ? sorted.filter((user) => {
-                          const reasonTexts = user.R.split(",").map((r) => getReasonInfo(r.trim()).text.toLowerCase());
-                          const matchesReason = reasonTexts.some((text) => text.includes(searchTerm));
-
-                          return user.ID.toString().includes(searchTerm) || user.UN.toLowerCase().includes(searchTerm) || user.DN.toLowerCase().includes(searchTerm) || matchesReason;
-                      })
-                    : sorted;
-
-                displayUsers(filtered, searchTerm);
-                updateStats(allUsers, filtered);
             }
-
+            function sortTable(column) {
+                const searchTerm = document.getElementById("searchInput").value.trim();
+                if (searchTerm !== "") {
+                    return;
+                }
+                if (sortColumn === column) {
+                    sortDirection *= -1;
+                } else {
+                    sortColumn = column;
+                    sortDirection = 1;
+                }
+                lastSortBeforeSearch = { column: sortColumn, direction: sortDirection };
+                const sorted = sortUsersByCurrentCriteria(allUsers);
+                displayUsers(sorted);
+                updateStats(allUsers, sorted);
+            }
             document.getElementById("searchInput").addEventListener("input", filterUsers);
-            displayUsers(allUsers);
-            updateStats(allUsers, allUsers);
+            const initialSorted = sortUsersByCurrentCriteria(allUsers);
+            displayUsers(initialSorted);
+            updateStats(allUsers, initialSorted);
         </script>
     </body>
 </html>
