@@ -125,8 +125,31 @@
         </div>
 
         <script>
+            let sortColumn = 3;
+            let sortDirection = 1;
+            let lastSortBeforeSearch = { column: 3, direction: 1 };
+            let hasStoredSort = false;
+            let allUsers = [];
+
+            function sortTable(column) {
+                const searchTerm = document.getElementById("searchInput").value.trim();
+                if (searchTerm !== "") return;
+
+                if (sortColumn === column) {
+                    sortDirection *= -1;
+                } else {
+                    sortColumn = column;
+                    sortDirection = 1;
+                }
+
+                lastSortBeforeSearch = { column: sortColumn, direction: sortDirection };
+                const sorted = sortUsersByCurrentCriteria(allUsers);
+                displayUsers(sorted);
+                updateStats(allUsers, sorted);
+            }
+
             document.addEventListener("DOMContentLoaded", () => {
-                const allUsers = [
+                allUsers = [
                     { ID: "4555316265", UN: "ValueToTheStars", DN: "Value", R: "R" },
                     { ID: "1944512650", UN: "Zaneioio", DN: "zaneioio", R: "G" },
                 ];
@@ -138,7 +161,6 @@
                         A: { text: "Alt", class: "reason-A" },
                         R: { text: "Raider", class: "reason-R" },
                         AB: { text: "Admin Abuse", class: "reason-AB" },
-                        L: { text: "Leaker", class: "reason-L" },
                     };
                     return map[code] || { text: code, class: "" };
                 }
@@ -155,18 +177,19 @@
                         tableContainer.innerHTML = '<div class="no-results">No users found.</div>';
                         return;
                     }
+
                     let html = `
-                    <table>
-                    <thead>
-                    <tr>
+                <table>
+                <thead>
+                <tr>
                     <th onclick="sortTable(0)">User ID <span class="sort-indicator" id="sort-0"></span></th>
                     <th onclick="sortTable(1)">Username <span class="sort-indicator" id="sort-1"></span></th>
                     <th onclick="sortTable(2)">Display Name <span class="sort-indicator" id="sort-2"></span></th>
                     <th onclick="sortTable(3)">Reason <span class="sort-indicator" id="sort-3"></span></th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    `;
+                </tr>
+                </thead>
+                <tbody>
+            `;
                     users.forEach((user) => {
                         const id = highlightMatch(user.ID.toString(), searchTerm);
                         const username = highlightMatch(user.UN, searchTerm);
@@ -180,13 +203,13 @@
                             })
                             .join(" ");
                         html += `
-                        <tr>
+                    <tr>
                         <td>${id}</td>
                         <td>${username}</td>
                         <td>${displayName}</td>
                         <td>${reasonsHTML}</td>
-                        </tr>
-                        `;
+                    </tr>
+                `;
                     });
                     html += "</tbody></table>";
                     tableContainer.innerHTML = html;
@@ -204,19 +227,16 @@
                         hasStoredSort = false;
                         return;
                     }
+
                     if (!hasStoredSort) {
                         lastSortBeforeSearch = { column: sortColumn, direction: sortDirection };
                         hasStoredSort = true;
                     }
+
                     const filtered = allUsers.filter((user) => {
                         const reasonTexts = user.R.split(",").map((r) => getReasonInfo(r.trim()).text.toLowerCase());
                         const matchesReason = reasonTexts.some((text) => text.includes(searchTerm));
-                        return (
-                            user.ID.toString().includes(searchTerm) ||
-                            user.UN.toLowerCase().includes(searchTerm) ||
-                            user.DN.toLowerCase().includes(searchTerm) ||
-                            matchesReason
-                        );
+                        return user.ID.toString().includes(searchTerm) || user.UN.toLowerCase().includes(searchTerm) || user.DN.toLowerCase().includes(searchTerm) || matchesReason;
                     });
 
                     const sortedByRelevance = filtered.sort((a, b) => {
@@ -237,11 +257,6 @@
                     updateStats(allUsers, sortedByRelevance);
                 }
 
-                function updateStats(all, filtered) {
-                    document.getElementById("totalUsers").textContent = all.length;
-                    document.getElementById("filteredUsers").textContent = filtered.length;
-                }
-
                 function countMatches(text, searchTerm) {
                     if (!searchTerm) return 0;
                     const regex = new RegExp(searchTerm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
@@ -249,12 +264,15 @@
                     return matches ? matches.length : 0;
                 }
 
+                function updateStats(all, filtered) {
+                    document.getElementById("totalUsers").textContent = all.length;
+                    document.getElementById("filteredUsers").textContent = filtered.length;
+                }
+
                 function updateSortIndicators() {
                     for (let i = 0; i < 4; i++) {
                         const indicator = document.getElementById(`sort-${i}`);
-                        if (indicator) {
-                            indicator.textContent = "";
-                        }
+                        if (indicator) indicator.textContent = "";
                     }
                     const currentIndicator = document.getElementById(`sort-${sortColumn}`);
                     if (currentIndicator) {
@@ -297,29 +315,8 @@
                     });
                 }
 
-                function sortTable(column) {
-                    const searchTerm = document.getElementById("searchInput").value.trim();
-                    if (searchTerm !== "") {
-                        return;
-                    }
-                    if (sortColumn === column) {
-                        sortDirection *= -1;
-                    } else {
-                        sortColumn = column;
-                        sortDirection = 1;
-                    }
-                    lastSortBeforeSearch = { column: sortColumn, direction: sortDirection };
-                    const sorted = sortUsersByCurrentCriteria(allUsers);
-                    displayUsers(sorted);
-                    updateStats(allUsers, sorted);
-                }
-
-                let sortColumn = 3;
-                let sortDirection = 1;
-                let lastSortBeforeSearch = { column: 3, direction: 1 };
-                let hasStoredSort = false;
-
                 document.getElementById("searchInput").addEventListener("input", filterUsers);
+
                 const initialSorted = sortUsersByCurrentCriteria(allUsers);
                 displayUsers(initialSorted);
                 updateStats(allUsers, initialSorted);
